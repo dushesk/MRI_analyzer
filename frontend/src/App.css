@@ -1,111 +1,197 @@
-/* Основные стили */
-.app-container {
-  max-width: 800px;
+.compact-app {
+  max-width: 900px;
   margin: 0 auto;
-  padding: 2rem;
-  font-family: 'Segoe UI', Roboto, sans-serif;
+  padding: 20px;
+  font-family: 'Segoe UI', sans-serif;
 }
 
-.app-title {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #1e3a8a;
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-/* Стили зоны загрузки */
-.upload-zone {
-  border: 2px dashed #d1d5db;
-  border-radius: 0.5rem;
-  padding: 1.5rem;
-  text-align: center;
-  cursor: pointer;
-  margin-bottom: 1.5rem;
-  transition: all 0.3s ease;
-}
-
-.upload-zone.active {
-  border-color: #3b82f6;
-  background-color: #eff6ff;
-}
-
-.upload-zone.has-image {
-  border-color: #10b981;
-}
-
-.upload-text {
-  color: #6b7280;
-  margin: 0;
-}
-
-/* Стили изображений */
-.image-preview {
-  margin-top: 1rem;
-}
-
-.mri-image {
-  max-width: 100%;
-  max-height: 20rem;
-  margin: 0 auto;
-  border-radius: 0.375rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.heatmap-image {
-  max-width: 100%;
-  border-radius: 0.375rem;
-}
-
-/* Стили кнопки */
-.analyze-btn {
-  width: 100%;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  font-weight: 500;
+.app-header {
+  background: #2c3e50;
   color: white;
-  background-color: #2563eb;
-  border: none;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.upload-area {
+  border: 2px dashed #ecf0f1;
+  padding: 30px;
+  margin: 15px 0;
   cursor: pointer;
-  margin-bottom: 2rem;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s;
+  border-radius: 5px;
+  text-align: center;
 }
 
-.analyze-btn:hover {
-  background-color: #1d4ed8;
+.upload-area.dragging {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #3498db;
 }
 
-.analyze-btn.loading {
-  background-color: #9ca3af;
+.analyze-button {
+  background: #3498db;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  transition: background 0.3s;
+  width: 100%;
+  margin-top: 10px;
 }
 
-.analyze-btn.disabled {
-  background-color: #9ca3af;
+.analyze-button:hover {
+  background: #2980b9;
+}
+
+.analyze-button:disabled {
+  background: #95a5a6;
   cursor: not-allowed;
 }
 
-.loading-spinner {
+.results-area {
+  display: flex;
+  gap: 30px;
+  margin-top: 20px;
+}
+
+.visualization-section {
+  flex: 2;
+  position: relative;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+  height: 400px;
+  background: #f8f9fa;
+}
+
+.image-comparison {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.original-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.heatmap-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+}
+
+.zoom-controls {
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+  display: flex;
+  gap: 10px;
+}
+
+.zoom-controls button {
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 16px;
+}
+
+.opacity-control {
+  position: absolute;
+  bottom: 15px;
+  left: 15px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px 15px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.opacity-control span {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.opacity-control input {
+  width: 100px;
+}
+
+.diagnosis-summary {
+  padding: 15px;
+  background: #ecf0f1;
+  border-radius: 0 0 8px 8px;
+  margin-top: -8px;
+}
+
+.diagnosis-summary h3 {
+  margin: 0 0 5px 0;
+  font-size: 16px;
+}
+
+.diagnosis-summary p {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.chart-container {
+  flex: 1;
+  height: 400px;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.file-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 5px 0;
+}
+
+.loading-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .spinner-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  margin-right: 0.75rem;
   animation: spin 1s linear infinite;
-}
-
-.spinner-track {
-  opacity: 0.25;
-  stroke: currentColor;
-  stroke-width: 4;
-}
-
-.spinner-path {
-  opacity: 0.75;
-  fill: currentColor;
+  width: 18px;
+  height: 18px;
 }
 
 @keyframes spin {
@@ -113,69 +199,31 @@
   to { transform: rotate(360deg); }
 }
 
-/* Стили результатов */
-.results-container {
-  margin-top: 2rem;
-}
-
-.results-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #1f2937;
-  border-bottom: 1px solid #e5e7eb;
-  padding-bottom: 0.5rem;
-  margin-bottom: 2rem;
-}
-
-.result-section {
-  margin-bottom: 2rem;
-}
-
-.result-section h3 {
-  font-size: 1.25rem;
-  font-weight: 500;
-  color: #374151;
-  margin-bottom: 1rem;
-}
-
-.heatmap-container {
-  background-color: #f9fafb;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.chart-container {
-  background-color: #f9fafb;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  height: 20rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.diagnosis-chart {
-  width: 100%;
-  height: 100%;
-}
-
-.diagnosis-conclusion {
-  background-color: #ecfdf5;
-  padding: 1.5rem;
-  border-radius: 0.5rem;
-  border: 1px solid #d1fae5;
-  margin-top: 1.5rem;
-}
-
-.diagnosis-conclusion h3 {
-  font-size: 1.25rem;
-  font-weight: 500;
-  color: #1f2937;
-  margin-bottom: 0.5rem;
-}
-
-.diagnosis-text {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: #065f46;
-  margin: 0;
+@media (max-width: 768px) {
+  .compact-app {
+    padding: 15px;
+  }
+  
+  .results-area {
+    flex-direction: column;
+    gap: 20px;
+  }
+  
+  .visualization-section,
+  .chart-container {
+    width: 100%;
+    height: auto;
+  }
+  
+  .visualization-section {
+    height: 300px;
+  }
+  
+  .chart-container {
+    height: 250px;
+  }
+  
+  .upload-area {
+    padding: 20px;
+  }
 }
