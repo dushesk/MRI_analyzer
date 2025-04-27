@@ -2,21 +2,17 @@ import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { useDropzone } from 'react-dropzone';
 import { Chart, BarController, BarElement, LinearScale, CategoryScale, Tooltip, Legend } from 'chart.js';
-import 'react-medium-image-zoom/dist/styles.css';
 import './App.css';
 
-// Регистрация компонентов Chart.js
 Chart.register(BarController, BarElement, LinearScale, CategoryScale, Tooltip, Legend);
 
 const API_URL = 'http://localhost:8000/api';
 
-// Перевод диагнозов
 const DIAGNOSIS_TRANSLATIONS = {
-  'MildDemented': 'Легкая',
-  'ModerateDemented': 'Умеренная',
+  'MildDemented': 'Легкая степень',
+  'ModerateDemented': 'Умеренная степень',
   'NonDemented': 'Норма',
-  'VeryMildDemented': 'Очень легкая',
-
+  'VeryMildDemented': 'Очень легкая степень',
 };
 
 function App() {
@@ -24,12 +20,10 @@ function App() {
   const [file, setFile] = useState(null);
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [opacity, setOpacity] = useState(0.5);
+  const [gradcamOpacity, setGradcamOpacity] = useState(0.5);
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
-  const imageContainerRef = useRef(null);
 
-  // Настройка dropzone для загрузки файлов
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: 'image/*',
     maxFiles: 1,
@@ -39,11 +33,10 @@ function App() {
       const reader = new FileReader();
       reader.onload = () => setImage(reader.result);
       reader.readAsDataURL(file);
-      setResults(null); // Сбрасываем предыдущие результаты
+      setResults(null);
     }
   });
 
-  // Анализ изображения
   const analyzeImage = async () => {
     if (!file) return;
     
@@ -56,17 +49,15 @@ function App() {
       setResults(response.data);
     } catch (error) {
       console.error('Analysis error:', error);
-      alert('Ошибка при анализе изображения. Проверьте консоль для подробностей.');
+      alert('Ошибка при анализе изображения');
     } finally {
       setLoading(false);
     }
   };
 
-  // Отрисовка диаграммы
   const renderDiagnosisChart = (predictions) => {
     if (!predictions || !chartRef.current) return;
 
-    // Удаляем предыдущий график, если он существует
     if (chartInstance.current) {
       chartInstance.current.destroy();
     }
@@ -77,21 +68,14 @@ function App() {
     chartInstance.current = new Chart(chartCtx, {
       type: 'bar',
       data: {
-        labels: Object.keys(DIAGNOSIS_TRANSLATIONS),
+        labels: Object.keys(DIAGNOSIS_TRANSLATIONS).map(key => DIAGNOSIS_TRANSLATIONS[key]),
         datasets: [{
-          label: 'Вероятность (%)',
           data: predictions,
           backgroundColor: [
             'rgba(255, 99, 132, 0.7)',
             'rgba(54, 162, 235, 0.7)',
             'rgba(75, 192, 192, 0.7)',
             'rgba(255, 206, 86, 0.7)'
-          ],
-          borderColor: [
-            'rgba(255, 99, 132, 1)',
-            'rgba(54, 162, 235, 1)',
-            'rgba(75, 192, 192, 1)',
-            'rgba(255, 206, 86, 1)'
           ],
           borderWidth: 1
         }]
@@ -109,11 +93,6 @@ function App() {
           }
         },
         plugins: {
-          tooltip: {
-            callbacks: {
-              label: context => `${context.dataset.label}: ${(context.raw * 100).toFixed(2)}%`
-            }
-          },
           legend: {
             display: false
           }
@@ -122,14 +101,12 @@ function App() {
     });
   };
 
-  // Автоматическое обновление диаграммы при изменении результатов
   useEffect(() => {
     if (results?.predictions) {
       renderDiagnosisChart(results.predictions);
     }
   }, [results]);
 
-  // Очистка при размонтировании компонента
   useEffect(() => {
     return () => {
       if (chartInstance.current) {
@@ -139,63 +116,77 @@ function App() {
   }, []);
 
   return (
-    <div className="compact-app">
-      <header className="app-header">
-        <h1>Анализатор МРТ</h1>
-        <div {...getRootProps()} className={`upload-area ${isDragActive ? 'dragging' : ''}`}>
+    <div className="app-container">
+      <div className="upload-section">
+        <div {...getRootProps()} className={`dropzone ${isDragActive ? 'active' : ''}`}>
           <input {...getInputProps()} />
-          {image ? (
-            <p className="file-name">{file.name}</p>
-          ) : (
-            <p>{isDragActive ? 'Отпустите файл' : 'Перетащите снимок'}</p>
-          )}
+          <p>{image ? file.name : 'Перетащите МРТ-снимок сюда'}</p>
         </div>
         <button 
           onClick={analyzeImage} 
           disabled={!image || loading}
-          className="analyze-button"
+          className="analyze-btn"
         >
           {loading ? 'Анализ...' : 'Анализировать'}
         </button>
-      </header>
+      </div>
 
       {results && (
-        <div className="results-area">
-          <div className="visualization-section">
-            <div className="image-comparison" ref={imageContainerRef}>
-              <img src={image} alt="Оригинал" className="original-image" />
+        <div className="results-row">
+          {/* Блок Grad-CAM с оригинальным изображением */}
+          <div className="gradcam-block">
+            <div className="gradcam-container">
+              {/* Оригинальное изображение как подложка */}
+              <img 
+                src={image} 
+                alt="Оригинальное изображение" 
+                className="original-underlay"
+              />
+              {/* Heatmap поверх оригинального изображения */}
               <img 
                 src={`data:image/png;base64,${results.heatmap_img}`} 
-                alt="Heatmap" 
-                className="heatmap-layer"
-                style={{ opacity }}
+                alt="Grad-CAM" 
+                className="heatmap-overlay"
+                style={{ opacity: gradcamOpacity }}
               />
-              <div className="zoom-controls">
-                <button onClick={() => imageContainerRef.current.requestFullscreen()}>
-                  🔍
-                </button>
-              </div>
-              <div className="opacity-control">
-                <span>Прозрачность:</span>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="1" 
-                  step="0.1"
-                  value={opacity}
-                  onChange={(e) => setOpacity(parseFloat(e.target.value))}
-                />
-              </div>
             </div>
-
-            <div className="diagnosis-summary">
-              <h3>Заключение: <strong>{DIAGNOSIS_TRANSLATIONS[results.predicted_class] || results.predicted_class}</strong></h3>
-              <p>Вероятность: {(results.confidence * 100).toFixed(1)}%</p>
+            
+            <div className="opacity-control">
+              <label>Прозрачность Grad-CAM:</label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={gradcamOpacity}
+                onChange={(e) => setGradcamOpacity(e.target.value)}
+              />
+            </div>
+          </div>
+          {/* Блок LIME */}
+          <div className="lime-block">
+            <div className="lime-container">
+              <img 
+                src={`data:image/png;base64,${results.lime_img}`} 
+                alt="LIME объяснение" 
+              />
             </div>
           </div>
 
-          <div className="chart-section">
-            <canvas ref={chartRef} />
+          {/* Блок графика и диагноза */}
+          <div className="chart-block">
+            <div className="chart-container">
+              <canvas ref={chartRef} />
+            </div>
+            <div className="diagnosis-box">
+              <h3>Результат:</h3>
+              <p className="diagnosis">
+                {DIAGNOSIS_TRANSLATIONS[results.predicted_class] || results.predicted_class}
+              </p>
+              <p className="confidence">
+                Уверенность: {(results.confidence * 100).toFixed(1)}%
+              </p>
+            </div>
           </div>
         </div>
       )}

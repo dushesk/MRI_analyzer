@@ -6,3 +6,5 @@ pillow==10.1.0
 numpy==1.26.0
 opencv-python-headless>=4.5.0
 pydantic==2.5.2
+lime
+scikit-image
