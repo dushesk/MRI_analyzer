@@ -7,7 +7,7 @@ import cv2
 import base64
 from PIL import Image
 
-class GradCAMVisualizer:
+class GradCAM:
     """Работа с Grad-CAM heatmap"""
     
     @staticmethod
@@ -40,15 +40,7 @@ class GradCAMVisualizer:
         heatmap = tf.maximum(heatmap, 0) / (tf.reduce_max(heatmap) + 1e-10)
         
         return heatmap.numpy()  
-    
-    # @staticmethod
-    # def apply_heatmap(original_img, heatmap, alpha=0.5):
-    #     """Наложение heatmap на изображение"""
-    #     heatmap = cv2.resize(heatmap, (original_img.shape[1], original_img.shape[0]))
-    #     heatmap = np.uint8(255 * heatmap)
-    #     heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-    #     return cv2.addWeighted(original_img, 1-alpha, heatmap, alpha, 0)
-    
+
     @staticmethod
     def save_heatmap(heatmap, save_dir=os.path.join("static","gradcam")):
         """Сохранение heatmap"""
@@ -73,13 +65,3 @@ class GradCAMVisualizer:
         heatmap = np.uint8(255 * heatmap)
         heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)        
         return Image.fromarray(heatmap)
-
-    @staticmethod
-    def get_heatmap_base64(heatmap):
-        """Получение цветного heatmap в base64"""
-        heatmap = cv2.resize(heatmap, (224, 224))
-        heatmap = np.uint8(255 * heatmap)
-        heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-        
-        _, buffer = cv2.imencode('.png', heatmap)
-        return base64.b64encode(buffer).decode('utf-8')

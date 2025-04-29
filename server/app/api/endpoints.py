@@ -3,67 +3,56 @@ from PIL import Image
 import io
 import numpy as np
 import base64
-from app.models.predictor import ImageProcessor, AlzheimerPredictor
-from app.models.gradcam import GradCAMVisualizer
-from app.models.lime import LIMExplainer
+from app.models.AlzheimerPredictor import AlzheimerPredictor
+from app.models.ImageProcessor import ImageProcessor
+from app.models.GradCAM import GradCAM
+from app.models.LIMExplainer import LIMExplainer
 from app.schemas.predictions import PredictionResult
 from app.models.model_loader import get_model
+from typing import Dict, Any
 import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.post("/predict", response_model=PredictionResult)
-async def predict_mri(file: UploadFile = File(...)):
-    """Эндпоинт для классификации без Grad-CAM"""
-    try:
-        contents = await file.read()
-        img = Image.open(io.BytesIO(contents))
-        
-        img_array = ImageProcessor.preprocess(img)
-        predictions = AlzheimerPredictor.predict(img_array)
-        
-        return {
-            "filename": file.filename,
-            "predictions": predictions,
-            "predicted_class": AlzheimerPredictor.get_class_name(predictions),
-            "confidence": float(np.max(predictions))
-        }
-        
-    except Exception as e:
-        logger.error(f"Prediction failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @router.post("/analyze", response_model=PredictionResult)
 async def analyze_mri(file: UploadFile = File(...)):
     """Эндпоинт для классификации с Grad-CAM и LIME"""
     try:
-        # 1. Загрузка и проверка изображения
+        return await AnalysisPipeline.process_image(file)        
+    except Exception as e:
+        logger.error(f"Analysis failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    
+class AnalysisPipeline:
+    """Централизованный обработчик анализа изображений"""
+    @staticmethod
+    async def process_image(file: UploadFile) -> Dict[str, Any]:
+        # Загрузка и проверка изображения
         contents = await file.read()
         img = Image.open(io.BytesIO(contents))
         
-        # 2. Предобработка изображения
+        # Предобработка изображения
         img_array = ImageProcessor.preprocess(img)
         logger.debug(f"Image shape after preprocessing: {img_array.shape}")
         
-        # 3. Получение модели
+        # Получение модели
         model = get_model()
         
-        # 4. Основное предсказание
+        # Основное предсказание
         predictions = model.predict(img_array)
-        predicted_class_idx = int(np.argmax(predictions))  # Конвертируем в Python int
         confidence = float(np.max(predictions))
         predicted_class = AlzheimerPredictor.get_class_name(predictions)
         
-        # 5. Grad-CAM
-        heatmap = GradCAMVisualizer.generate_heatmap(model, img_array)
-        heatmap_img = GradCAMVisualizer.prepare_heatmap_image(heatmap)
+        # Grad-CAM
+        heatmap = GradCAM.generate_heatmap(model, img_array)
+        heatmap_img = GradCAM.prepare_heatmap_image(heatmap)
         
-        # 6. LIME объяснение
+        # LIME объяснение
         lime_explainer = LIMExplainer(model)
         lime_explanation = lime_explainer.explain(img_array[0])  # Берем первое изображение из батча
         
-        # 7. Подготовка результатов
+        # Подготовка результатов
         def image_to_base64(img):
             buffered = io.BytesIO()
             img.save(buffered, format="PNG")
@@ -80,7 +69,7 @@ async def analyze_mri(file: UploadFile = File(...)):
                 "weight": float(feature[1])  # Конвертируем в float
             })
         
-        # 8. Формируем ответ
+        # Формируем ответ
         response = {
             "filename": file.filename,
             "predictions": predictions_list,
@@ -94,14 +83,10 @@ async def analyze_mri(file: UploadFile = File(...)):
             }
         }
         
-        # Для LIME изображения (если нужно)
+        # Для LIME изображения 
         if hasattr(lime_explainer, 'get_visualization'):
             lime_img = lime_explainer.get_visualization(lime_explanation)
             lime_img_pil = lime_explainer.explanation_to_image(lime_img)
             response["lime_img"] = image_to_base64(lime_img_pil)
         
         return response
-        
-    except Exception as e:
-        logger.error(f"Analysis failed: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
