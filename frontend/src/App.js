@@ -15,6 +15,11 @@ const DIAGNOSIS_TRANSLATIONS = {
   'VeryMildDemented': 'Очень легкая степень',
 };
 
+// Генерация ключа для кэша на основе файла
+const generateCacheKey = (file) => {
+  return `mri_analysis_${file.name}_${file.size}`;
+};
+
 function App() {
   const [image, setImage] = useState(null);
   const [file, setFile] = useState(null);
@@ -34,19 +39,46 @@ function App() {
       reader.onload = () => setImage(reader.result);
       reader.readAsDataURL(file);
       setResults(null);
+      
+      // Проверяем кэш при выборе нового файла
+      const cacheKey = generateCacheKey(file);
+      const cachedData = localStorage.getItem(cacheKey);
+      if (cachedData) {
+        setResults(JSON.parse(cachedData));
+      }
     }
   });
+
+  // Загрузка кэша при монтировании (если нужно)
+  useEffect(() => {
+    // Здесь можно добавить логику загрузки последнего анализа
+    // Например, если хотите сохранять последний результат между сессиями
+  }, []);
 
   const analyzeImage = async () => {
     if (!file) return;
     
     setLoading(true);
     try {
+      // const cacheKey = generateCacheKey(file);
+      // const cachedData = localStorage.getItem(cacheKey);
+      
+      // // Если есть кэш - используем его
+      // if (cachedData) {
+      //   setResults(JSON.parse(cachedData));
+      //   setLoading(false);
+      //   return;
+      // }
+      
+      // Иначе делаем запрос к API
       const formData = new FormData();
       formData.append('file', file);
       
       const response = await axios.post(`${API_URL}/analyze`, formData);
       setResults(response.data);
+      
+      // Сохраняем в кэш
+      // localStorage.setItem(cacheKey, JSON.stringify(response.data));
     } catch (error) {
       console.error('Analysis error:', error);
       alert('Ошибка при анализе изображения');

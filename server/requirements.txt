@@ -8,3 +8,6 @@ opencv-python-headless>=4.5.0
 pydantic==2.5.2
 lime
 scikit-image
+aioredis>=2.0.0
+fastapi-cache2>=0.2.0
+redis==4.5.5
