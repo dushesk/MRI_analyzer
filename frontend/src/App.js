@@ -39,46 +39,19 @@ function App() {
       reader.onload = () => setImage(reader.result);
       reader.readAsDataURL(file);
       setResults(null);
-      
-      // Проверяем кэш при выборе нового файла
-      const cacheKey = generateCacheKey(file);
-      const cachedData = localStorage.getItem(cacheKey);
-      if (cachedData) {
-        setResults(JSON.parse(cachedData));
-      }
     }
   });
-
-  // Загрузка кэша при монтировании (если нужно)
-  useEffect(() => {
-    // Здесь можно добавить логику загрузки последнего анализа
-    // Например, если хотите сохранять последний результат между сессиями
-  }, []);
 
   const analyzeImage = async () => {
     if (!file) return;
     
     setLoading(true);
     try {
-      // const cacheKey = generateCacheKey(file);
-      // const cachedData = localStorage.getItem(cacheKey);
-      
-      // // Если есть кэш - используем его
-      // if (cachedData) {
-      //   setResults(JSON.parse(cachedData));
-      //   setLoading(false);
-      //   return;
-      // }
-      
-      // Иначе делаем запрос к API
       const formData = new FormData();
       formData.append('file', file);
       
       const response = await axios.post(`${API_URL}/analyze`, formData);
       setResults(response.data);
-      
-      // Сохраняем в кэш
-      // localStorage.setItem(cacheKey, JSON.stringify(response.data));
     } catch (error) {
       console.error('Analysis error:', error);
       alert('Ошибка при анализе изображения');
@@ -87,8 +60,29 @@ function App() {
     }
   };
 
-  const renderDiagnosisChart = (predictions) => {
-    if (!predictions || !chartRef.current) return;
+  const classifyImage = async () => {
+    if (!file) return;
+    
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await axios.post(`${API_URL}/classify`, formData);
+      setResults({
+        classification: response.data,
+        interpretation: null
+      });
+    } catch (error) {
+      console.error('Classification error:', error);
+      alert('Ошибка при классификации изображения');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderDiagnosisChart = (probabilities) => {
+    if (!probabilities || !chartRef.current) return;
 
     if (chartInstance.current) {
       chartInstance.current.destroy();
@@ -97,12 +91,15 @@ function App() {
     const chartCtx = chartRef.current.getContext('2d');
     if (!chartCtx) return;
     
+    const labels = Object.keys(DIAGNOSIS_TRANSLATIONS);
+    const data = labels.map(label => probabilities[label]);
+    
     chartInstance.current = new Chart(chartCtx, {
       type: 'bar',
       data: {
-        labels: Object.keys(DIAGNOSIS_TRANSLATIONS).map(key => DIAGNOSIS_TRANSLATIONS[key]),
+        labels: labels.map(key => DIAGNOSIS_TRANSLATIONS[key]),
         datasets: [{
-          data: predictions,
+          data: data,
           backgroundColor: [
             'rgba(255, 99, 132, 0.7)',
             'rgba(54, 162, 235, 0.7)',
@@ -134,8 +131,8 @@ function App() {
   };
 
   useEffect(() => {
-    if (results?.predictions) {
-      renderDiagnosisChart(results.predictions);
+    if (results?.classification?.probabilities) {
+      renderDiagnosisChart(results.classification.probabilities);
     }
   }, [results]);
 
@@ -154,56 +151,70 @@ function App() {
           <input {...getInputProps()} />
           <p>{image ? file.name : 'Перетащите МРТ-снимок сюда'}</p>
         </div>
-        <button 
-          onClick={analyzeImage} 
-          disabled={!image || loading}
-          className="analyze-btn"
-        >
-          {loading ? 'Анализ...' : 'Анализировать'}
-        </button>
+        <div className="button-group">
+          <button 
+            onClick={analyzeImage} 
+            disabled={!image || loading}
+            className="analyze-btn"
+          >
+            {loading ? 'Анализ...' : 'Полный анализ'}
+          </button>
+          <button 
+            onClick={classifyImage} 
+            disabled={!image || loading}
+            className="classify-btn"
+          >
+            {loading ? 'Классификация...' : 'Классифицировать'}
+          </button>
+        </div>
       </div>
 
       {results && (
         <div className="results-row">
-          {/* Блок Grad-CAM с оригинальным изображением */}
-          <div className="gradcam-block">
-            <div className="gradcam-container">
-              {/* Оригинальное изображение как подложка */}
-              <img 
-                src={image} 
-                alt="Оригинальное изображение" 
-                className="original-underlay"
-              />
-              {/* Heatmap поверх оригинального изображения */}
-              <img 
-                src={`data:image/png;base64,${results.heatmap_img}`} 
-                alt="Grad-CAM" 
-                className="heatmap-overlay"
-                style={{ opacity: gradcamOpacity }}
-              />
-            </div>
-            
-            <div className="opacity-control">
-              <label>Прозрачность Grad-CAM:</label>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.1"
-                value={gradcamOpacity}
-                onChange={(e) => setGradcamOpacity(e.target.value)}
-              />
-            </div>
-          </div>
-          {/* Блок LIME */}
-          <div className="lime-block">
-            <div className="lime-container">
-              <img 
-                src={`data:image/png;base64,${results.lime_img}`} 
-                alt="LIME объяснение" 
-              />
-            </div>
-          </div>
+          {results.interpretation && (
+            <>
+              {/* Блок Grad-CAM с оригинальным изображением */}
+              <div className="gradcam-block">
+                <div className="gradcam-container">
+                  <img 
+                    src={image} 
+                    alt="Оригинальное изображение" 
+                    className="original-underlay"
+                  />
+                  <img 
+                    src={`data:image/png;base64,${results.interpretation.additional_info.heatmap_img}`} 
+                    alt="Grad-CAM" 
+                    className="heatmap-overlay"
+                    style={{ opacity: gradcamOpacity }}
+                  />
+                </div>
+                
+                <div className="opacity-control">
+                  <label>Прозрачность Grad-CAM:</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={gradcamOpacity}
+                    onChange={(e) => setGradcamOpacity(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Блок LIME */}
+              {results.interpretation.additional_info.lime_img && (
+                <div className="lime-block">
+                  <div className="lime-container">
+                    <img 
+                      src={`data:image/png;base64,${results.interpretation.additional_info.lime_img}`} 
+                      alt="LIME объяснение" 
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
           {/* Блок графика и диагноза */}
           <div className="chart-block">
@@ -213,11 +224,27 @@ function App() {
             <div className="diagnosis-box">
               <h3>Результат:</h3>
               <p className="diagnosis">
-                {DIAGNOSIS_TRANSLATIONS[results.predicted_class] || results.predicted_class}
+                {DIAGNOSIS_TRANSLATIONS[results.classification.class_name] || results.classification.class_name}
               </p>
               <p className="confidence">
-                Уверенность: {(results.confidence * 100).toFixed(1)}%
+                Уверенность: {(results.classification.confidence * 100).toFixed(1)}%
               </p>
+              {/* {results.interpretation && (
+                <>
+                  <h4>Находки:</h4>
+                  <ul>
+                    {results.interpretation.findings.map((finding, index) => (
+                      <li key={index}>{finding}</li>
+                    ))}
+                  </ul>
+                  <h4>Рекомендации:</h4>
+                  <ul>
+                    {results.interpretation.recommendations.map((recommendation, index) => (
+                      <li key={index}>{recommendation}</li>
+                    ))}
+                  </ul>
+                </>
+              )} */}
             </div>
           </div>
         </div>
