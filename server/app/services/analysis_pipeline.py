@@ -10,6 +10,8 @@ from app.models.ImageProcessor import ImageProcessor
 from app.models.GradCAM import GradCAM
 from app.models.LIMExplainer import LIMExplainer
 from app.models.model_loader import get_model
+from app.core.exceptions import InvalidImageError, ImageSizeError, ModelProcessingError
+import PIL
 
 
 class AnalysisPipeline:
@@ -25,11 +27,17 @@ class AnalysisPipeline:
         """
         start_time = time.time()
         contents = await file.read()
-        img = Image.open(io.BytesIO(contents))
+        try:
+            img = Image.open(io.BytesIO(contents))
+        except PIL.UnidentifiedImageError:
+            raise InvalidImageError("Невозможно открыть изображение. Проверьте формат файла.")
         
         # Предобработка
         img_array = ImageProcessor.preprocess(img)
-        model = get_model()
+        try:
+            model = get_model()
+        except Exception as e:
+            raise ModelProcessingError(f"Ошибка загрузки модели: {str(e)}")
         
         # Предсказание
         predictions = model.predict(img_array)
@@ -38,12 +46,18 @@ class AnalysisPipeline:
         class_id = np.argmax(predictions)
         
         # Grad-CAM
-        heatmap = GradCAM.generate_heatmap(model, img_array)
-        heatmap_img = GradCAM.prepare_heatmap_image(heatmap)
+        try:
+            heatmap = GradCAM.generate_heatmap(model, img_array)
+            heatmap_img = GradCAM.prepare_heatmap_image(heatmap)
+        except Exception as e:
+            raise ModelProcessingError(f"Ошибка GradCAM: {str(e)}")
         
         # LIME
         lime_explainer = LIMExplainer(model)
-        lime_explanation = lime_explainer.explain(img_array[0])
+        try:
+            lime_explanation = lime_explainer.explain(img_array[0])
+        except Exception as e:
+            raise ModelProcessingError(f"Ошибка LIME: {str(e)}")
         
         # Формирование ответа в новом формате
         response = {
@@ -79,7 +93,7 @@ class AnalysisPipeline:
                 }
             },
             "processing_time": time.time() - start_time,
-            "model_version": "1.0.0"  # TODO: Добавить версионирование модели
+            "model_version": "1.0.0"
         }
         
         if hasattr(lime_explainer, 'get_visualization'):
@@ -142,7 +156,10 @@ class AnalysisPipeline:
         
         # Предобработка
         img_array = ImageProcessor.preprocess(img)
-        model = get_model()
+        try:
+            model = get_model()
+        except Exception as e:
+            raise ModelProcessingError(f"Ошибка загрузки модели: {str(e)}")
         
         # Предсказание
         predictions = model.predict(img_array)
@@ -150,12 +167,18 @@ class AnalysisPipeline:
         predicted_class = AlzheimerPredictor.get_class_name(predictions)
         
         # Grad-CAM
-        heatmap = GradCAM.generate_heatmap(model, img_array)
-        heatmap_img = GradCAM.prepare_heatmap_image(heatmap)
+        try:
+            heatmap = GradCAM.generate_heatmap(model, img_array)
+            heatmap_img = GradCAM.prepare_heatmap_image(heatmap)
+        except Exception as e:
+            raise ModelProcessingError(f"Ошибка GradCAM: {str(e)}")
         
         # LIME
         lime_explainer = LIMExplainer(model)
-        lime_explanation = lime_explainer.explain(img_array[0])
+        try:
+            lime_explanation = lime_explainer.explain(img_array[0])
+        except Exception as e:
+            raise ModelProcessingError(f"Ошибка LIME: {str(e)}")
         
         response = {
             "findings": [

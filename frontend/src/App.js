@@ -26,21 +26,47 @@ function App() {
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [gradcamOpacity, setGradcamOpacity] = useState(0.5);
+  const [zoomedImage, setZoomedImage] = useState(null);
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportData, setExportData] = useState({
+    patient_name: '',
+    patient_id: '',
+    patient_birth_date: '',
+    patient_sex: '',
+    study_date: '',
+    study_description: '',
+    referring_physician_name: ''
+  });
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: 'image/*',
+    accept: {
+      'image/*': ['.png', '.jpg', '.jpeg'],
+      'application/dicom': ['.dcm']
+    },
     maxFiles: 1,
     onDrop: acceptedFiles => {
       const file = acceptedFiles[0];
-      setFile(file);
-      const reader = new FileReader();
-      reader.onload = () => setImage(reader.result);
-      reader.readAsDataURL(file);
-      setResults(null);
+      if (file.name.toLowerCase().endsWith('.dcm')) {
+        importFromDicom(acceptedFiles);
+      } else {
+        setFile(file);
+        const reader = new FileReader();
+        reader.onload = () => setImage(reader.result);
+        reader.readAsDataURL(file);
+        setResults(null);
+      }
     }
   });
+
+  const handleImageClick = (imageSrc) => {
+    setZoomedImage(imageSrc);
+  };
+
+  const closeZoomedImage = () => {
+    setZoomedImage(null);
+  };
 
   const analyzeImage = async () => {
     if (!file) return;
@@ -76,6 +102,75 @@ function App() {
     } catch (error) {
       console.error('Classification error:', error);
       alert('Ошибка при классификации изображения');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportDataChange = (e) => {
+    const { name, value } = e.target;
+    setExportData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const exportToDicom = async () => {
+    if (!file) return;
+    
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('export_data', JSON.stringify(exportData));
+      
+      const response = await axios.post(`${API_URL}/export/dicom`, formData, {
+        responseType: 'blob'
+      });
+      
+      // Создаем ссылку для скачивания
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'mri_export.dcm');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      setShowExportModal(false);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Ошибка при экспорте в DICOM');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const importFromDicom = async (acceptedFiles) => {
+    const dicomFile = acceptedFiles[0];
+    if (!dicomFile) return;
+    
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', dicomFile);
+      formData.append('output_format', 'image');
+      
+      const response = await axios.post(`${API_URL}/import/dicom`, formData, {
+        responseType: 'blob'
+      });
+      
+      // Создаем URL для изображения
+      const imageUrl = URL.createObjectURL(new Blob([response.data]));
+      setImage(imageUrl);
+      
+      // Создаем файл из Blob
+      const file = new File([response.data], 'imported_image.png', { type: 'image/png' });
+      setFile(file);
+      
+    } catch (error) {
+      console.error('Import error:', error);
+      alert('Ошибка при импорте DICOM файла');
     } finally {
       setLoading(false);
     }
@@ -149,7 +244,7 @@ function App() {
       <div className="upload-section">
         <div {...getRootProps()} className={`dropzone ${isDragActive ? 'active' : ''}`}>
           <input {...getInputProps()} />
-          <p>{image ? file.name : 'Перетащите МРТ-снимок сюда'}</p>
+          <p>{image ? file.name : 'Перетащите МРТ-снимок или DICOM файл сюда'}</p>
         </div>
         <div className="button-group">
           <button 
@@ -166,8 +261,102 @@ function App() {
           >
             {loading ? 'Классификация...' : 'Классифицировать'}
           </button>
+          <button 
+            onClick={() => setShowExportModal(true)} 
+            disabled={!image || loading}
+            className="export-btn"
+          >
+            Экспорт в DICOM
+          </button>
         </div>
       </div>
+
+      {/* Модальное окно для экспорта */}
+      {showExportModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>Экспорт в DICOM</h2>
+            <form onSubmit={(e) => { e.preventDefault(); exportToDicom(); }}>
+              <div className="form-group">
+                <label>Имя пациента *</label>
+                <input
+                  type="text"
+                  name="patient_name"
+                  value={exportData.patient_name}
+                  onChange={handleExportDataChange}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>ID пациента</label>
+                <input
+                  type="text"
+                  name="patient_id"
+                  value={exportData.patient_id}
+                  onChange={handleExportDataChange}
+                />
+              </div>
+              <div className="form-group">
+                <label>Дата рождения</label>
+                <input
+                  type="date"
+                  name="patient_birth_date"
+                  value={exportData.patient_birth_date}
+                  onChange={handleExportDataChange}
+                />
+              </div>
+              <div className="form-group">
+                <label>Пол</label>
+                <select
+                  name="patient_sex"
+                  value={exportData.patient_sex}
+                  onChange={handleExportDataChange}
+                >
+                  <option value="">Выберите пол</option>
+                  <option value="M">Мужской</option>
+                  <option value="F">Женский</option>
+                  <option value="O">Другой</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Дата исследования</label>
+                <input
+                  type="date"
+                  name="study_date"
+                  value={exportData.study_date}
+                  onChange={handleExportDataChange}
+                />
+              </div>
+              <div className="form-group">
+                <label>Описание исследования</label>
+                <input
+                  type="text"
+                  name="study_description"
+                  value={exportData.study_description}
+                  onChange={handleExportDataChange}
+                />
+              </div>
+              <div className="form-group">
+                <label>Имя направляющего врача</label>
+                <input
+                  type="text"
+                  name="referring_physician_name"
+                  value={exportData.referring_physician_name}
+                  onChange={handleExportDataChange}
+                />
+              </div>
+              <div className="modal-buttons">
+                <button type="submit" disabled={loading}>
+                  {loading ? 'Экспорт...' : 'Экспортировать'}
+                </button>
+                <button type="button" onClick={() => setShowExportModal(false)}>
+                  Отмена
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {results && (
         <div className="results-row">
@@ -176,17 +365,28 @@ function App() {
               {/* Блок Grad-CAM с оригинальным изображением */}
               <div className="gradcam-block">
                 <div className="gradcam-container">
-                  <img 
-                    src={image} 
-                    alt="Оригинальное изображение" 
-                    className="original-underlay"
-                  />
-                  <img 
-                    src={`data:image/png;base64,${results.interpretation.additional_info.heatmap_img}`} 
-                    alt="Grad-CAM" 
-                    className="heatmap-overlay"
-                    style={{ opacity: gradcamOpacity }}
-                  />
+                  <div className="image-wrapper" onClick={() => handleImageClick(image)}>
+                    <img 
+                      src={image} 
+                      alt="Оригинальное изображение" 
+                      className="original-underlay"
+                      style={{ width: '224px', height: '224px', objectFit: 'cover' }}
+                    />
+                    <img 
+                      src={`data:image/png;base64,${results.interpretation.additional_info.heatmap_img}`} 
+                      alt="Grad-CAM" 
+                      className="heatmap-overlay"
+                      style={{ 
+                        opacity: gradcamOpacity,
+                        width: '224px',
+                        height: '224px',
+                        objectFit: 'cover',
+                        position: 'absolute',
+                        top: 0,
+                        left: 0
+                      }}
+                    />
+                  </div>
                 </div>
                 
                 <div className="opacity-control">
@@ -206,10 +406,13 @@ function App() {
               {results.interpretation.additional_info.lime_img && (
                 <div className="lime-block">
                   <div className="lime-container">
-                    <img 
-                      src={`data:image/png;base64,${results.interpretation.additional_info.lime_img}`} 
-                      alt="LIME объяснение" 
-                    />
+                    <div className="image-wrapper" onClick={() => handleImageClick(`data:image/png;base64,${results.interpretation.additional_info.lime_img}`)}>
+                      <img 
+                        src={`data:image/png;base64,${results.interpretation.additional_info.lime_img}`} 
+                        alt="LIME объяснение"
+                        style={{ width: '224px', height: '224px', objectFit: 'cover' }}
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -229,23 +432,16 @@ function App() {
               <p className="confidence">
                 Уверенность: {(results.classification.confidence * 100).toFixed(1)}%
               </p>
-              {/* {results.interpretation && (
-                <>
-                  <h4>Находки:</h4>
-                  <ul>
-                    {results.interpretation.findings.map((finding, index) => (
-                      <li key={index}>{finding}</li>
-                    ))}
-                  </ul>
-                  <h4>Рекомендации:</h4>
-                  <ul>
-                    {results.interpretation.recommendations.map((recommendation, index) => (
-                      <li key={index}>{recommendation}</li>
-                    ))}
-                  </ul>
-                </>
-              )} */}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно для увеличенного изображения */}
+      {zoomedImage && (
+        <div className="zoom-modal" onClick={closeZoomedImage}>
+          <div className="zoom-content">
+            <img src={zoomedImage} alt="Увеличенное изображение" />
           </div>
         </div>
       )}

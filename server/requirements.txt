@@ -11,3 +11,4 @@ scikit-image
 aioredis>=2.0.0
 fastapi-cache2>=0.2.0
 redis==4.5.5
+pydicom==2.4.3

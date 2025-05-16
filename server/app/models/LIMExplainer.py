@@ -21,14 +21,27 @@ class LIMExplainer:
             # Подготовка входных данных для модели
             if images.ndim == 3:
                 images = np.expand_dims(images, axis=0)
-            return self.model.predict(images)
+            
+            # Получаем предсказания от модели
+            predictions = self.model.predict(images)
+            
+            # Нормализуем форму предсказаний
+            if len(predictions.shape) == 1:
+                predictions = np.expand_dims(predictions, axis=0)
+            
+            # Если предсказания имеют форму (1, n_classes), повторяем их для каждого изображения
+            if predictions.shape[0] == 1 and len(images) > 1:
+                predictions = np.tile(predictions, (len(images), 1))
+            
+            return predictions
         
         return self.explainer.explain_instance(
             image_array.astype('double'),
             predict_fn,
             top_labels=1,
             hide_color=0,
-            num_samples=self.num_samples
+            num_samples=self.num_samples,
+            batch_size=10
         )
     
     @staticmethod
