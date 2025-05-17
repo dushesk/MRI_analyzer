@@ -42,7 +42,7 @@ function App() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: {
-      'image/*': ['.png', '.jpg', '.jpeg'],
+      'image/*': ['.jpg', '.jpeg'],
       'application/dicom': ['.dcm']
     },
     maxFiles: 1,
@@ -125,7 +125,10 @@ function App() {
       formData.append('export_data', JSON.stringify(exportData));
       
       const response = await axios.post(`${API_URL}/export/dicom`, formData, {
-        responseType: 'blob'
+        responseType: 'blob',
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
       });
       
       // Создаем ссылку для скачивания
@@ -140,7 +143,11 @@ function App() {
       setShowExportModal(false);
     } catch (error) {
       console.error('Export error:', error);
-      alert('Ошибка при экспорте в DICOM');
+      if (error.response?.status === 422) {
+        alert('Ошибка в данных формы. Пожалуйста, проверьте все поля.');
+      } else {
+        alert('Ошибка при экспорте в DICOM');
+      }
     } finally {
       setLoading(false);
     }
@@ -160,13 +167,22 @@ function App() {
         responseType: 'blob'
       });
       
+      // Создаем Blob из ответа
+      const blob = new Blob([response.data], { type: 'image/jpeg' });
+      
       // Создаем URL для изображения
-      const imageUrl = URL.createObjectURL(new Blob([response.data]));
+      const imageUrl = URL.createObjectURL(blob);
       setImage(imageUrl);
       
-      // Создаем файл из Blob
-      const file = new File([response.data], 'imported_image.png', { type: 'image/png' });
+      // Создаем File объект из Blob
+      const file = new File([blob], 'imported_image.jpg', { 
+        type: 'image/jpeg',
+        lastModified: new Date().getTime()
+      });
       setFile(file);
+      
+      // Запускаем классификацию с тем же файлом
+      await classifyImage();
       
     } catch (error) {
       console.error('Import error:', error);
@@ -373,7 +389,7 @@ function App() {
                       style={{ width: '224px', height: '224px', objectFit: 'cover' }}
                     />
                     <img 
-                      src={`data:image/png;base64,${results.interpretation.additional_info.heatmap_img}`} 
+                      src={`data:image/jpeg;base64,${results.interpretation.additional_info.heatmap_img}`} 
                       alt="Grad-CAM" 
                       className="heatmap-overlay"
                       style={{ 
@@ -406,9 +422,9 @@ function App() {
               {results.interpretation.additional_info.lime_img && (
                 <div className="lime-block">
                   <div className="lime-container">
-                    <div className="image-wrapper" onClick={() => handleImageClick(`data:image/png;base64,${results.interpretation.additional_info.lime_img}`)}>
+                    <div className="image-wrapper" onClick={() => handleImageClick(`data:image/jpeg;base64,${results.interpretation.additional_info.lime_img}`)}>
                       <img 
-                        src={`data:image/png;base64,${results.interpretation.additional_info.lime_img}`} 
+                        src={`data:image/jpeg;base64,${results.interpretation.additional_info.lime_img}`} 
                         alt="LIME объяснение"
                         style={{ width: '224px', height: '224px', objectFit: 'cover' }}
                       />

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
 from fastapi_cache.decorator import cache
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
@@ -6,7 +6,7 @@ import hashlib
 import logging
 import json
 from app.services.analysis_pipeline import AnalysisPipeline
-from app.schemas.predictions import PredictionResult, ClassificationResult, InterpretationResult
+from app.schemas.predictions import PredictionResult, ClassificationResult
 from app.schemas.dicom import DicomExportData
 from app.core.exceptions import (
     MRIAnalysisError,
@@ -16,7 +16,6 @@ from app.core.exceptions import (
     CacheError
 )
 from fastapi.responses import FileResponse
-from typing import Optional
 import os
 import tempfile
 from app.services.dicom_handler import DicomHandler
@@ -46,8 +45,8 @@ def get_file_hash(file: UploadFile) -> str:
 async def analyze_mri(file: UploadFile = File(...)):
     """Полный анализ МРТ (классификация + интерпретация)"""
     try:
-        if not file.content_type.startswith('image/'):
-            raise InvalidImageError("Загруженный файл не является изображением")
+        if not file.content_type == 'image/jpeg':
+            raise InvalidImageError("Загруженный файл должен быть в формате JPG")
 
         try:
             # Проверяем кэш перед обработкой
@@ -70,6 +69,18 @@ async def analyze_mri(file: UploadFile = File(...)):
                 return cached_data
             
             logger.info(f"Cache miss for key: {cache_key}, processing image...")
+            logger.info(f"File info - name: {file.filename}, content_type: {file.content_type}")
+            
+            # Сохраняем временную копию для отладки
+            temp_path = f"/tmp/debug_analyze_{file.filename}"
+            contents = await file.read()
+            with open(temp_path, 'wb') as f:
+                f.write(contents)
+            logger.info(f"Saved debug copy to {temp_path}")
+            
+            # Возвращаем указатель в начало файла
+            await file.seek(0)
+            
             result = await AnalysisPipeline.process_image(file)
             
             # Преобразуем результат в словарь для корректной сериализации
@@ -105,8 +116,8 @@ async def analyze_mri(file: UploadFile = File(...)):
 async def classify_mri(file: UploadFile = File(...)):
     """Только классификация МРТ без интерпретации"""
     try:
-        if not file.content_type.startswith('image/'):
-            raise InvalidImageError("Загруженный файл не является изображением")
+        if not file.content_type == 'image/jpeg':
+            raise InvalidImageError("Загруженный файл должен быть в формате JPG")
 
         try:
             # Проверяем кэш перед обработкой
@@ -164,63 +175,83 @@ async def classify_mri(file: UploadFile = File(...)):
 @router.post("/export/dicom")
 async def export_to_dicom(
     file: UploadFile = File(...),
-    export_data: DicomExportData = None
+    export_data: str = Form(...)
 ):
     """
     Экспортирует изображение в DICOM формат с добавлением метаданных пациента.
     
     Args:
-        file: Загруженный файл (JPG, PNG)
-        export_data: Данные пациента и исследования
+        file: Загруженный файл (JPG)
+        export_data: JSON строка с данными пациента и исследования
     """
+    temp_file = None
+    output_dicom = None
+    
     try:
-        if not file.content_type.startswith('image/'):
-            raise InvalidImageError("Загруженный файл не является изображением")
+        if not file.content_type == 'image/jpeg':
+            raise InvalidImageError("Загруженный файл должен быть в формате JPG")
+
+        # Парсим JSON данные
+        export_data_dict = json.loads(export_data)
+        export_data_model = DicomExportData(**export_data_dict)
 
         # Создаем временный файл для загруженного изображения
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_file.flush()
-            
-            # Создаем временный файл для DICOM
-            output_dicom = tempfile.mktemp(suffix='.dcm')
-            
-            # Подготавливаем метаданные
-            metadata = {
-                'PatientName': export_data.patient_name,
-                'PatientID': export_data.patient_id or '',
-                'PatientBirthDate': export_data.patient_birth_date or '',
-                'PatientSex': export_data.patient_sex or '',
-                'StudyDate': export_data.study_date or datetime.now().strftime('%Y%m%d'),
-                'StudyDescription': export_data.study_description or 'MRI Analysis',
-                'ReferringPhysicianName': export_data.referring_physician_name or '',
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
+        logger.info(f"Created temporary input file at: {temp_file.name}")
+        content = await file.read()
+        temp_file.write(content)
+        temp_file.flush()
+        temp_file.close()
+        
+        # Создаем временный файл для DICOM
+        output_dicom = tempfile.mktemp(suffix='.dcm')
+        logger.info(f"Will save DICOM file to: {output_dicom}")
+        
+        # Подготавливаем метаданные
+        metadata = {
+            'PatientName': export_data_model.patient_name,
+            'PatientID': export_data_model.patient_id or '',
+            'PatientBirthDate': export_data_model.patient_birth_date or '',
+            'PatientSex': export_data_model.patient_sex or '',
+            'StudyDate': export_data_model.study_date or datetime.now().strftime('%Y%m%d'),
+            'StudyDescription': export_data_model.study_description or 'MRI Analysis',
+            'ReferringPhysicianName': export_data_model.referring_physician_name or '',
+        }
+        
+        # Добавляем дополнительные метаданные, если они есть
+        if export_data_model.additional_metadata:
+            metadata.update(export_data_model.additional_metadata)
+        
+        # Конвертируем в DICOM
+        logger.info("Starting DICOM conversion...")
+        dicom_handler.convert_to_dicom(temp_file.name, output_dicom, metadata)
+        
+        # Проверяем, что файл создался
+        if not os.path.exists(output_dicom):
+            raise Exception(f"DICOM file was not created at {output_dicom}")
+        
+        logger.info(f"DICOM file exists at: {output_dicom}")
+        logger.info(f"File size: {os.path.getsize(output_dicom)} bytes")
+        
+        # Возвращаем DICOM файл
+        return FileResponse(
+            output_dicom,
+            media_type='application/dicom',
+            filename=f'mri_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.dcm',
+            headers={
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type'
             }
-            
-            # Добавляем дополнительные метаданные, если они есть
-            if export_data.additional_metadata:
-                metadata.update(export_data.additional_metadata)
-            
-            # Конвертируем в DICOM
-            dicom_handler.convert_to_dicom(temp_file.name, output_dicom, metadata)
-            
-            # Возвращаем DICOM файл
-            return FileResponse(
-                output_dicom,
-                media_type='application/dicom',
-                filename=f'mri_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.dcm'
-            )
-            
+        )
+        
     except InvalidImageError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="Invalid JSON data")
     except Exception as e:
+        logger.error(f"Error in export_to_dicom: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-    finally:
-        # Удаляем временные файлы
-        if 'temp_file' in locals():
-            os.unlink(temp_file.name)
-        if 'output_dicom' in locals() and os.path.exists(output_dicom):
-            os.unlink(output_dicom)
 
 @router.post("/import/dicom")
 async def import_from_dicom(
@@ -234,43 +265,67 @@ async def import_from_dicom(
         file: Загруженный DICOM файл
         output_format: Формат вывода (json или image)
     """
+    temp_files = []  # Список для отслеживания временных файлов
     try:
         if not file.filename.lower().endswith('.dcm'):
             raise InvalidImageError("Загруженный файл не является DICOM файлом")
 
         # Создаем временный файл для загруженного DICOM
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.dcm') as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_file.flush()
+        temp_dicom = tempfile.NamedTemporaryFile(delete=False, suffix='.dcm')
+        temp_files.append(temp_dicom.name)
+        content = await file.read()
+        temp_dicom.write(content)
+        temp_dicom.flush()
+        temp_dicom.close()
+        
+        # Получаем метаданные
+        metadata = dicom_handler.get_dicom_metadata(temp_dicom.name)
+        
+        # Если запрошен формат изображения, конвертируем DICOM в изображение
+        if output_format.lower() == "image":
+            output_image = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
+            temp_files.append(output_image.name)
+            output_image.close()
             
-            # Получаем метаданные
-            metadata = dicom_handler.get_dicom_metadata(temp_file.name)
+            dicom_handler.convert_from_dicom(temp_dicom.name, output_image.name)
             
-            # Если запрошен формат изображения, конвертируем DICOM в изображение
-            if output_format.lower() == "image":
-                output_image = tempfile.mktemp(suffix='.png')
-                dicom_handler.convert_from_dicom(temp_file.name, output_image)
-                
-                return FileResponse(
-                    output_image,
-                    media_type='image/png',
-                    filename='imported_image.png'
-                )
+            # Создаем функцию для очистки временных файлов после отправки
+            async def cleanup():
+                for temp_file in temp_files:
+                    try:
+                        os.unlink(temp_file)
+                    except Exception as e:
+                        logger.error(f"Error cleaning up temp file {temp_file}: {str(e)}")
             
-            # Возвращаем метаданные в формате JSON
-            return {
-                "metadata": metadata,
-                "message": "DICOM file successfully imported"
-            }
-            
+            # Возвращаем файл с функцией очистки
+            return FileResponse(
+                output_image.name,
+                media_type='image/jpeg',
+                filename='imported_image.jpg',
+                headers={
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                },
+                background=cleanup
+            )
+        
+        # Возвращаем метаданные в формате JSON
+        return {
+            "metadata": metadata,
+            "message": "DICOM file successfully imported"
+        }
+        
     except InvalidImageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.error(f"Error in import_from_dicom: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
     finally:
-        # Удаляем временные файлы
-        if 'temp_file' in locals():
-            os.unlink(temp_file.name)
-        if 'output_image' in locals() and os.path.exists(output_image):
-            os.unlink(output_image)
+        # Удаляем временные файлы, если они не были переданы в FileResponse
+        for temp_file in temp_files:
+            try:
+                if os.path.exists(temp_file):
+                    os.unlink(temp_file)
+            except Exception as e:
+                logger.error(f"Error cleaning up temp file {temp_file}: {str(e)}")
