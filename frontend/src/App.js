@@ -40,25 +40,73 @@ function App() {
     referring_physician_name: ''
   });
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: {
-      'image/*': ['.jpg', '.jpeg'],
-      'application/dicom': ['.dcm']
-    },
-    maxFiles: 1,
-    onDrop: acceptedFiles => {
-      const file = acceptedFiles[0];
+const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  accept: {
+    'image/*': ['.jpg', '.jpeg'],
+    'application/dicom': ['.dcm']
+  },
+  maxFiles: 1,
+  onDrop: (acceptedFiles, fileRejections) => {
+    // Обработка отклоненных файлов
+    if (fileRejections.length > 0) {
+      const rejection = fileRejections[0];
+      let errorMessage = '';
+
+      if (rejection.errors.some(e => e.code === 'file-invalid-type')) {
+        errorMessage = 'Неподдерживаемый формат файла. Пожалуйста, загрузите JPG, PNG или DICOM файл.';
+      } else if (rejection.errors.some(e => e.code === 'too-many-files')) {
+        errorMessage = 'Можно загрузить только один файл за раз.';
+      } else {
+        errorMessage = 'Ошибка при загрузке файла.';
+      }
+
+      alert(errorMessage);
+      return;
+    }
+
+    // Обработка принятых файлов
+    const file = acceptedFiles[0];
+    try {
       if (file.name.toLowerCase().endsWith('.dcm')) {
         importFromDicom(acceptedFiles);
       } else {
+        // Проверка формата изображения
+        if (!['image/jpeg', 'image/jpg', 'image/png'].includes(file.type)) {
+          throw new Error('Неподдерживаемый формат изображения');
+        }
+
         setFile(file);
         const reader = new FileReader();
-        reader.onload = () => setImage(reader.result);
+        
+        reader.onerror = () => {
+          throw new Error('Ошибка чтения файла');
+        };
+        
+        reader.onload = () => {
+          // Дополнительная проверка валидности изображения
+          const img = new Image();
+          img.onerror = () => {
+            setImage(null);
+            setFile(null);
+            alert('Файл не является валидным изображением');
+          };
+          img.onload = () => {
+            setImage(reader.result);
+            setResults(null);
+          };
+          img.src = reader.result;
+        };
+        
         reader.readAsDataURL(file);
-        setResults(null);
       }
+    } catch (error) {
+      console.error('File processing error:', error);
+      alert(error.message || 'Ошибка обработки файла');
+      setImage(null);
+      setFile(null);
     }
-  });
+  }
+});
 
   const handleImageClick = (imageSrc) => {
     setZoomedImage(imageSrc);

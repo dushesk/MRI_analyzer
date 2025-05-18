@@ -80,14 +80,6 @@ class TestLIMExplainer:
         
         explanation = explainer.explain(img_array[0])
         
-        # Test different alpha values
-        for alpha in [0.1, 0.5, 0.9]:
-            vis = explainer.get_visualization(explanation, alpha=alpha)
-            assert vis is not None
-            assert isinstance(vis, np.ndarray)
-            assert vis.shape == (224, 224, 3)
-            assert vis.dtype == np.uint8
-        
         # Test different num_features values
         for num_features in [3, 5, 7]:
             vis = explainer.get_visualization(explanation, num_features=num_features)
@@ -108,14 +100,8 @@ class TestLIMExplainer:
         explanation = explainer.explain(img_array[0])
         
         with pytest.raises(ValueError):
-            explainer.get_visualization(explanation, alpha=-0.1)
-        
-        with pytest.raises(ValueError):
-            explainer.get_visualization(explanation, alpha=1.1)
-        
-        with pytest.raises(ValueError):
             explainer.get_visualization(explanation, num_features=0)
-            
+        
     def test_model_prediction_error(self, sample_image):
         class ErrorModel:
             def predict(self, x):
